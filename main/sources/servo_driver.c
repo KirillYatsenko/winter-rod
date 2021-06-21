@@ -11,15 +11,14 @@
 #define TAG                  "SERVO_DRIVER"
 #define SERVO_GPIO           13
 #define SERVO_FAST_DELAY_MS  1.6   // per angle
-#define SERVO_MIN_DELAY      2   // per angle
+#define SERVO_MIN_DELAY      2     // per angle
 #define SERVO_MAX_DELAY      10    // per angle
-#define SERVO_MIN_PULSEWIDTH 500  // Minimum pulse width in microsecond
+#define SERVO_MIN_PULSEWIDTH 500   // Minimum pulse width in microsecond
 #define SERVO_MAX_PULSEWIDTH 2400  // Maximum pulse width in microsecond
 #define SERVO_MAX_DEGREE     90
 
 static uint32_t servo_duty_calculate(uint32_t degree_of_rotation);
 static uint32_t servo_delay_calculate_per_angle(uint8_t speed_percent);
-static esp_err_t servo_fast_drive(uint16_t amplitude);
 
 static esp_err_t servo_normal_drive(uint16_t initial_value,
                                     uint16_t destination_value,
@@ -57,49 +56,16 @@ esp_err_t servo_driver_drive(uint8_t speed_percent, uint8_t amplitude_percent)
     esp_err_t result = ESP_OK;
     uint16_t amplitude = SERVO_MAX_DEGREE * amplitude_percent / 100;
 
-    // if (speed_percent > 90) {
-    //     if ((result = servo_fast_drive(amplitude)) != ESP_OK) {
-    //         return result;
-    //     }
-    // }
-    // else {
-        if ((result = servo_normal_drive(amplitude, 1, -10, speed_percent)) !=
-            ESP_OK) {
-            return result;
-        }
-
-        if ((result = servo_normal_drive(0, amplitude, +10, speed_percent)) !=
-            ESP_OK) {
-            return result;
-        }
-    // }
-
-    return result;
-}
-
-static esp_err_t servo_fast_drive(uint16_t amplitude)
-{
-    esp_err_t result = ESP_OK;
-    uint32_t angle;
-
-    angle = servo_duty_calculate(0);
-    if ((result = mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A,
-                                       angle)) != ESP_OK) {
-        return result;
-    }
-    ESP_LOGI(TAG, "amplitude = %d", amplitude);
-    ESP_LOGI(TAG, "delay ms = %d", (int)(SERVO_FAST_DELAY_MS * amplitude));
-
-    vTaskDelay(SERVO_FAST_DELAY_MS * amplitude / portTICK_PERIOD_MS);
-
-    angle = servo_duty_calculate(amplitude);
-    if ((result = mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A,
-                                       angle)) != ESP_OK) {
+    if ((result = servo_normal_drive(amplitude, 1, -10, speed_percent)) !=
+        ESP_OK) {
         return result;
     }
 
-    vTaskDelay(SERVO_FAST_DELAY_MS * amplitude / portTICK_PERIOD_MS);
-    // vTaskDelay(SERVO_FAST_DELAY_MS / portTICK_PERIOD_MS);
+    if ((result = servo_normal_drive(0, amplitude, +10, speed_percent)) !=
+        ESP_OK) {
+        return result;
+    }
+
     return result;
 }
 
