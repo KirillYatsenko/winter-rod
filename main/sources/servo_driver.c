@@ -14,8 +14,10 @@
 #define SERVO_MAX_DELAY      10    // per angle
 #define SERVO_MIN_PULSEWIDTH 500   // Minimum pulse width in microsecond
 #define SERVO_MAX_PULSEWIDTH 2400  // Maximum pulse width in microsecond
+#define SERVO_MIN_DEGREE     20
 #define SERVO_MAX_DEGREE     90
 
+static uint16_t servo_amplitude_calculate(uint8_t amplitude_percent);
 static uint32_t servo_duty_calculate(uint32_t degree_of_rotation);
 static uint32_t servo_delay_calculate_per_angle(uint8_t speed_percent);
 
@@ -57,7 +59,9 @@ esp_err_t servo_driver_init(void)
 esp_err_t servo_driver_drive(uint8_t speed_percent, uint8_t amplitude_percent)
 {
     esp_err_t result = ESP_OK;
-    uint16_t amplitude = SERVO_MAX_DEGREE * amplitude_percent / 100;
+    uint16_t amplitude = servo_amplitude_calculate(amplitude_percent);
+
+    printf("amplitude: %u\n", amplitude);
 
     if ((result = servo_normal_drive(amplitude, 0, -10, speed_percent,
                                      cmp_greater_equal)) != ESP_OK) {
@@ -102,23 +106,24 @@ static esp_err_t servo_normal_drive(uint16_t initial_value,
     return result;
 }
 
+static uint16_t servo_amplitude_calculate(uint8_t amplitude_percent)
+{
+    return SERVO_MIN_DEGREE +
+           (SERVO_MAX_DEGREE - SERVO_MIN_DEGREE) * amplitude_percent / 100;
+}
+
 static uint32_t servo_duty_calculate(uint32_t degree_of_rotation)
 {
-    uint32_t cal_pulsewidth = 0;
-    cal_pulsewidth = (SERVO_MIN_PULSEWIDTH +
-                      (((SERVO_MAX_PULSEWIDTH - SERVO_MIN_PULSEWIDTH) *
-                        (degree_of_rotation)) /
-                       (SERVO_MAX_DEGREE)));
-
-    return cal_pulsewidth;
+    return (SERVO_MIN_PULSEWIDTH +
+            (((SERVO_MAX_PULSEWIDTH - SERVO_MIN_PULSEWIDTH) *
+              (degree_of_rotation)) /
+             (SERVO_MAX_DEGREE)));
 }
 
 static uint32_t servo_delay_calculate_per_angle(uint8_t speed_percent)
 {
-    uint32_t delay = (SERVO_MIN_DELAY + ((SERVO_MAX_DELAY - SERVO_MIN_DELAY) *
-                                         ((100 - speed_percent) / 100.0)));
-
-    return delay;
+    return (SERVO_MIN_DELAY + ((SERVO_MAX_DELAY - SERVO_MIN_DELAY) *
+                               ((100 - speed_percent) / 100.0)));
 }
 
 static uint8_t cmp_less_equal(int16_t a, int16_t b)
