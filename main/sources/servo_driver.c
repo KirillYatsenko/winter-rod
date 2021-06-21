@@ -1,3 +1,5 @@
+#include "servo_driver.h"
+#include <math.h>
 #include <stdio.h>
 #include "driver/mcpwm.h"
 #include "esp_attr.h"
@@ -5,19 +7,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "soc/mcpwm_periph.h"
-#include "servo_driver.h"
 
 #define TAG                  "SERVO_DRIVER"
 #define SERVO_GPIO           13
-#define SERVO_FAST_DELAY     350
-#define SERVO_MIN_DELAY      10
-#define SERVO_MAX_DELAY      50
-#define SERVO_MIN_PULSEWIDTH 1000  // Minimum pulse width in microsecond
-#define SERVO_MAX_PULSEWIDTH 2000  // Maximum pulse width in microsecond
+#define SERVO_FAST_DELAY_MS  1.6   // per angle
+#define SERVO_MIN_DELAY      2   // per angle
+#define SERVO_MAX_DELAY      10    // per angle
+#define SERVO_MIN_PULSEWIDTH 500  // Minimum pulse width in microsecond
+#define SERVO_MAX_PULSEWIDTH 2400  // Maximum pulse width in microsecond
 #define SERVO_MAX_DEGREE     90
 
 static uint32_t servo_duty_calculate(uint32_t degree_of_rotation);
-static uint32_t servo_delay_calculate(uint8_t speed_percent);
+static uint32_t servo_delay_calculate_per_angle(uint8_t speed_percent);
 static esp_err_t servo_fast_drive(uint16_t amplitude);
 
 static esp_err_t servo_normal_drive(uint16_t initial_value,
@@ -56,22 +57,22 @@ esp_err_t servo_driver_drive(uint8_t speed_percent, uint8_t amplitude_percent)
     esp_err_t result = ESP_OK;
     uint16_t amplitude = SERVO_MAX_DEGREE * amplitude_percent / 100;
 
-    if (speed_percent > 90) {
-        if ((result = servo_fast_drive(amplitude)) != ESP_OK) {
-            return result;
-        }
-    }
-    else {
-        if ((result = servo_normal_drive(amplitude, 1, -1, speed_percent)) !=
+    // if (speed_percent > 90) {
+    //     if ((result = servo_fast_drive(amplitude)) != ESP_OK) {
+    //         return result;
+    //     }
+    // }
+    // else {
+        if ((result = servo_normal_drive(amplitude, 1, -10, speed_percent)) !=
             ESP_OK) {
             return result;
         }
 
-        if ((result = servo_normal_drive(0, amplitude, 1, speed_percent)) !=
+        if ((result = servo_normal_drive(0, amplitude, +10, speed_percent)) !=
             ESP_OK) {
             return result;
         }
-    }
+    // }
 
     return result;
 }
@@ -86,8 +87,10 @@ static esp_err_t servo_fast_drive(uint16_t amplitude)
                                        angle)) != ESP_OK) {
         return result;
     }
+    ESP_LOGI(TAG, "amplitude = %d", amplitude);
+    ESP_LOGI(TAG, "delay ms = %d", (int)(SERVO_FAST_DELAY_MS * amplitude));
 
-    vTaskDelay(SERVO_FAST_DELAY / portTICK_PERIOD_MS);
+    vTaskDelay(SERVO_FAST_DELAY_MS * amplitude / portTICK_PERIOD_MS);
 
     angle = servo_duty_calculate(amplitude);
     if ((result = mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A,
@@ -95,7 +98,8 @@ static esp_err_t servo_fast_drive(uint16_t amplitude)
         return result;
     }
 
-    vTaskDelay(SERVO_FAST_DELAY / portTICK_PERIOD_MS);
+    vTaskDelay(SERVO_FAST_DELAY_MS * amplitude / portTICK_PERIOD_MS);
+    // vTaskDelay(SERVO_FAST_DELAY_MS / portTICK_PERIOD_MS);
     return result;
 }
 
@@ -107,9 +111,8 @@ static esp_err_t servo_normal_drive(uint16_t initial_value,
     esp_err_t result = ESP_OK;
     uint32_t angle, delay;
 
-    for (size_t i = initial_value; i != destination_value;
+    for (size_t i = initial_value; i < destination_value;
          i += increment_value) {
-
         angle = servo_duty_calculate(i);
 
         if ((result = mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0,
@@ -117,7 +120,12 @@ static esp_err_t servo_normal_drive(uint16_t initial_value,
             return result;
         }
 
-        delay = servo_delay_calculate(speed_percent);
+        delay = servo_delay_calculate_per_angle(speed_percent) *
+                abs(increment_value);
+
+        ESP_LOGI(TAG, "amplitude = %d", destination_value);
+        ESP_LOGI(TAG, "delay ms = %d", delay);
+
         vTaskDelay(delay / portTICK_PERIOD_MS);
     }
 
@@ -135,7 +143,7 @@ static uint32_t servo_duty_calculate(uint32_t degree_of_rotation)
     return cal_pulsewidth;
 }
 
-static uint32_t servo_delay_calculate(uint8_t speed_percent)
+static uint32_t servo_delay_calculate_per_angle(uint8_t speed_percent)
 {
     uint32_t delay = (SERVO_MIN_DELAY + ((SERVO_MAX_DELAY - SERVO_MIN_DELAY) *
                                          ((100 - speed_percent) / 100.0)));
